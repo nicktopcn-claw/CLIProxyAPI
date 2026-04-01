@@ -17,6 +17,7 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -84,6 +85,21 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 	from := opts.SourceFormat
 	to := sdktranslator.FromString("openai")
 	endpoint := "/chat/completions"
+	
+	// Detect if this is an embeddings request
+	isEmbeddings := false
+	if len(req.Payload) > 0 && (gjson.GetBytes(req.Payload, "input").Exists() || gjson.GetBytes(req.Payload, "input_text").Exists()) {
+		isEmbeddings = true
+	}
+	if opts.Alt == "embeddings" {
+		isEmbeddings = true
+	}
+	
+	if isEmbeddings {
+		endpoint = "/embeddings"
+		to = sdktranslator.FromString("openai-embedding")
+	}
+	
 	if opts.Alt == "responses/compact" {
 		to = sdktranslator.FromString("openai-response")
 		endpoint = "/responses/compact"
