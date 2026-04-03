@@ -228,6 +228,22 @@ nonstream-keepalive-interval: 0
 #       - name: "kimi-k2.5"
 #         alias: "claude-opus-4.66"
 
+# Embeddings compatibility providers (for embedding/reranker APIs like Jina, Cohere)
+# NOTE: This is a SEPARATE configuration from openai-compatibility.
+# Use this for providers that ONLY support embeddings/reranker endpoints.
+# embeddings-compatibility:
+#   - name: "jina"
+#     base-url: "https://api.jina.ai/v1"
+#     api-key-entries:
+#       - api-key: "jina_..."
+#     models:
+#       - name: "jina-embeddings-v2-base-en"
+#         alias: "jina-embeddings"
+#       - name: "jina-embeddings-v3"
+#         alias: "jina-embeddings-v3"
+#       - name: "jina-reranker-v3"
+#         alias: "jina-reranker"
+
 # Vertex API keys (Vertex-compatible endpoints, base-url is optional)
 # vertex-api-key:
 #   - api-key: "vk-123..."                        # x-goog-api-key header

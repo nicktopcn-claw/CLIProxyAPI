@@ -352,6 +352,11 @@ func openAICompatModelPoolKey(auth *Auth, requestedModel string) string {
 	return strings.ToLower(strings.TrimSpace(auth.ID)) + "|" + openAICompatProviderKey(auth) + "|" + strings.ToLower(base)
 }
 
+func embeddingsCompatModelPoolKey(auth *Auth, requestedModel string) string {
+	base := strings.TrimSpace(requestedModel)
+	return strings.ToLower(strings.TrimSpace(auth.ID)) + "|" + "embeddings-compatibility" + "|" + strings.ToLower(base)
+}
+
 func (m *Manager) nextModelPoolOffset(key string, size int) int {
 	if m == nil || size <= 1 {
 		return 0
@@ -417,6 +422,33 @@ func (m *Manager) resolveOpenAICompatUpstreamModelPool(auth *Auth, requestedMode
 	return resolveModelAliasPoolFromConfigModels(requestedModel, asModelAliasEntries(entry.Models))
 }
 
+func (m *Manager) resolveEmbeddingsCompatUpstreamModelPool(auth *Auth, requestedModel string) []string {
+	if m == nil {
+		return nil
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return nil
+	}
+	cfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+	if cfg == nil || len(cfg.EmbeddingsCompatibility) == 0 {
+		return nil
+	}
+	compatName := ""
+	if auth.Attributes != nil {
+		compatName = strings.TrimSpace(auth.Attributes["compat_name"])
+	}
+	for i := range cfg.EmbeddingsCompatibility {
+		entry := &cfg.EmbeddingsCompatibility[i]
+		for _, candidate := range []string{compatName, auth.Provider} {
+			if candidate != "" && strings.EqualFold(strings.TrimSpace(candidate), entry.Name) {
+				return resolveModelAliasPoolFromConfigModels(requestedModel, asModelAliasEntries(entry.Models))
+			}
+		}
+	}
+	return nil
+}
+
 func preserveRequestedModelSuffix(requestedModel, resolved string) string {
 	return preserveResolvedModelSuffix(resolved, thinking.ParseSuffix(requestedModel))
 }
@@ -429,6 +461,13 @@ func (m *Manager) executionModelCandidates(auth *Auth, routeModel string) []stri
 			return pool
 		}
 		offset := m.nextModelPoolOffset(openAICompatModelPoolKey(auth, requestedModel), len(pool))
+		return rotateStrings(pool, offset)
+	}
+	if pool := m.resolveEmbeddingsCompatUpstreamModelPool(auth, requestedModel); len(pool) > 0 {
+		if len(pool) == 1 {
+			return pool
+		}
+		offset := m.nextModelPoolOffset(embeddingsCompatModelPoolKey(auth, requestedModel), len(pool))
 		return rotateStrings(pool, offset)
 	}
 	resolved := m.applyAPIKeyModelAlias(auth, requestedModel)

@@ -105,6 +105,10 @@ type Config struct {
 	// OpenAICompatibility defines OpenAI API compatibility configurations for external providers.
 	OpenAICompatibility []OpenAICompatibility `yaml:"openai-compatibility" json:"openai-compatibility"`
 
+	// EmbeddingsCompatibility defines embeddings-compatible provider configurations.
+	// Used for providers that only support embeddings/reranker endpoints (like Jina).
+	EmbeddingsCompatibility []EmbeddingsCompatibility `yaml:"embeddings-compatibility" json:"embeddings-compatibility"`
+
 	// VertexCompatAPIKey defines Vertex AI-compatible API key configurations for third-party providers.
 	// Used for services that use Vertex AI-style paths but with simple API key authentication.
 	VertexCompatAPIKey []VertexCompatKey `yaml:"vertex-api-key" json:"vertex-api-key"`
@@ -533,6 +537,44 @@ type OpenAICompatibilityModel struct {
 func (m OpenAICompatibilityModel) GetName() string  { return m.Name }
 func (m OpenAICompatibilityModel) GetAlias() string { return m.Alias }
 
+// EmbeddingsCompatibility represents the configuration for embeddings-compatible providers
+// (like Jina, Cohere, etc.) that only support embeddings/reranker endpoints.
+type EmbeddingsCompatibility struct {
+	// Name is the identifier for this embeddings compatibility configuration.
+	Name string `yaml:"name" json:"name"`
+
+	// Priority controls selection preference when multiple providers or credentials match.
+	// Higher values are preferred; defaults to 0.
+	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
+
+	// Prefix optionally namespaces model aliases for this provider.
+	Prefix string `yaml:"prefix,omitempty" json:"prefix,omitempty"`
+
+	// BaseURL is the base URL for the external embeddings-compatible API endpoint.
+	BaseURL string `yaml:"base-url" json:"base-url"`
+
+	// APIKeyEntries defines API keys with optional per-key proxy configuration.
+	APIKeyEntries []OpenAICompatibilityAPIKey `yaml:"api-key-entries,omitempty" json:"api-key-entries,omitempty"`
+
+	// Models defines the model configurations including aliases for routing.
+	Models []EmbeddingsCompatibilityModel `yaml:"models" json:"models"`
+
+	// Headers optionally adds extra HTTP headers for requests sent to this provider.
+	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+}
+
+// EmbeddingsCompatibilityModel represents a model configuration for embeddings compatibility.
+type EmbeddingsCompatibilityModel struct {
+	// Name is the actual model name used by the external provider.
+	Name string `yaml:"name" json:"name"`
+
+	// Alias is the model name alias that clients will use to reference this model.
+	Alias string `yaml:"alias" json:"alias"`
+}
+
+func (m EmbeddingsCompatibilityModel) GetName() string  { return m.Name }
+func (m EmbeddingsCompatibilityModel) GetAlias() string { return m.Alias }
+
 // LoadConfig reads a YAML configuration file from the given path,
 // unmarshals it into a Config struct, applies environment variable overrides,
 // and returns it.
@@ -661,6 +703,9 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 
 	// Sanitize OpenAI compatibility providers: drop entries without base-url
 	cfg.SanitizeOpenAICompatibility()
+
+	// Sanitize Embeddings compatibility providers: drop entries without base-url
+	cfg.SanitizeEmbeddingsCompatibility()
 
 	// Normalize OAuth provider model exclusion map.
 	cfg.OAuthExcludedModels = NormalizeOAuthExcludedModels(cfg.OAuthExcludedModels)
@@ -828,6 +873,28 @@ func (cfg *Config) SanitizeOpenAICompatibility() {
 		out = append(out, e)
 	}
 	cfg.OpenAICompatibility = out
+}
+
+// SanitizeEmbeddingsCompatibility removes embeddings-compatibility provider entries that are
+// not actionable, specifically those missing a BaseURL. It trims whitespace before
+// evaluation and preserves the relative order of remaining entries.
+func (cfg *Config) SanitizeEmbeddingsCompatibility() {
+	if cfg == nil || len(cfg.EmbeddingsCompatibility) == 0 {
+		return
+	}
+	out := make([]EmbeddingsCompatibility, 0, len(cfg.EmbeddingsCompatibility))
+	for i := range cfg.EmbeddingsCompatibility {
+		e := cfg.EmbeddingsCompatibility[i]
+		e.Name = strings.TrimSpace(e.Name)
+		e.Prefix = normalizeModelPrefix(e.Prefix)
+		e.BaseURL = strings.TrimSpace(e.BaseURL)
+		e.Headers = NormalizeHeaders(e.Headers)
+		if e.BaseURL == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	cfg.EmbeddingsCompatibility = out
 }
 
 // SanitizeCodexKeys removes Codex API key entries missing a BaseURL.

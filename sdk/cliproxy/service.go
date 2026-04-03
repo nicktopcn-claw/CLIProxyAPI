@@ -369,6 +369,22 @@ func openAICompatInfoFromAuth(a *coreauth.Auth) (providerKey string, compatName 
 	return "", "", false
 }
 
+func embeddingsCompatInfoFromAuth(a *coreauth.Auth) (compatName string, ok bool) {
+	if a == nil {
+		return "", false
+	}
+	if len(a.Attributes) > 0 {
+		compatName = strings.TrimSpace(a.Attributes["compat_name"])
+		if compatName != "" {
+			return compatName, true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(a.Provider), "embeddings-compatibility") {
+		return strings.TrimSpace(a.Label), true
+	}
+	return "", false
+}
+
 func (s *Service) ensureExecutorsForAuth(a *coreauth.Auth) {
 	s.ensureExecutorsForAuthWithMode(a, false)
 }
@@ -404,6 +420,14 @@ func (s *Service) ensureExecutorsForAuthWithMode(a *coreauth.Auth, forceReplace 
 			compatProviderKey = "openai-compatibility"
 		}
 		s.coreManager.RegisterExecutor(executor.NewOpenAICompatExecutor(compatProviderKey, s.cfg))
+		return
+	}
+	if compatName, isEmbeddingsCompat := embeddingsCompatInfoFromAuth(a); isEmbeddingsCompat {
+		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
+		if providerKey == "" {
+			providerKey = "embeddings-compatibility"
+		}
+		s.coreManager.RegisterExecutor(executor.NewOpenAICompatExecutor(providerKey, s.cfg))
 		return
 	}
 	switch strings.ToLower(a.Provider) {
@@ -986,6 +1010,42 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 						s.registerResolvedModelsForAuth(a, providerKey, applyModelPrefixes(ms, a.Prefix, s.cfg.ForceModelPrefix))
 					} else {
 						// Ensure stale registrations are cleared when model list becomes empty.
+						GlobalModelRegistry().UnregisterClient(a.ID)
+					}
+					return
+				}
+			}
+			// Check EmbeddingsCompatibility providers
+			for i := range s.cfg.EmbeddingsCompatibility {
+				compat := &s.cfg.EmbeddingsCompatibility[i]
+				if strings.EqualFold(compat.Name, compatName) {
+					isCompatAuth = true
+					// Convert compatibility models to registry models
+					ms := make([]*ModelInfo, 0, len(compat.Models))
+					for j := range compat.Models {
+						m := compat.Models[j]
+						// Use alias as model ID, fallback to name if alias is empty
+						modelID := m.Alias
+						if modelID == "" {
+							modelID = m.Name
+						}
+						ms = append(ms, &ModelInfo{
+							ID:          modelID,
+							Object:      "model",
+							Created:     time.Now().Unix(),
+							OwnedBy:     compat.Name,
+							Type:        "embeddings-compatibility",
+							DisplayName: modelID,
+							UserDefined: false,
+						})
+					}
+					// Register and return
+					if len(ms) > 0 {
+						if providerKey == "" {
+							providerKey = "embeddings-compatibility"
+						}
+						s.registerResolvedModelsForAuth(a, providerKey, applyModelPrefixes(ms, a.Prefix, s.cfg.ForceModelPrefix))
+					} else {
 						GlobalModelRegistry().UnregisterClient(a.ID)
 					}
 					return
