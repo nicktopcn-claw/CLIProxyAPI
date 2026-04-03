@@ -422,7 +422,7 @@ func (s *Service) ensureExecutorsForAuthWithMode(a *coreauth.Auth, forceReplace 
 		s.coreManager.RegisterExecutor(executor.NewOpenAICompatExecutor(compatProviderKey, s.cfg))
 		return
 	}
-	if compatName, isEmbeddingsCompat := embeddingsCompatInfoFromAuth(a); isEmbeddingsCompat {
+	if _, isEmbeddingsCompat := embeddingsCompatInfoFromAuth(a); isEmbeddingsCompat {
 		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
 		if providerKey == "" {
 			providerKey = "embeddings-compatibility"
